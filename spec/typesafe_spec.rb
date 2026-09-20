@@ -4,6 +4,13 @@ require "typesafe"
 
 RSpec.describe Typesafe do
   it "has a version" do
-    expect(Typesafe::VERSION).to eq("0.1.0")
+    expect(Typesafe::VERSION).to eq("0.2.0")
+  end
+
+  it "exposes the question types" do
+    expect(Typesafe::Question).to be_a(Class)
+    expect(Typesafe::Noul).to be < Typesafe::Question
+    expect(Typesafe::Choice).to be < Typesafe::Question
+    expect(Typesafe::Score).to be < Typesafe::Question
   end
 end

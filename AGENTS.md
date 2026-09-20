@@ -6,17 +6,27 @@ Build a Ruby gem (`typesafe-jev`) to use **Jev** — TypeSafe's flagship System 
 
 ## Current state
 
-Minimal scaffold only. **No Jev/API code yet** — the gem contains an empty `module Typesafe` and a version constant. Do not assume a client exists.
+Question classes exist ({Noul, Choice, Score} value objects under `Typesafe::`, see Structure). **No HTTP client yet** — do not assume one exists.
 
 ## Structure
 
 ```
-lib/typesafe.rb            # empty module (entry point)
-lib/typesafe/version.rb    # VERSION = "0.1.0"
-spec/                      # RSpec (not minitest)
-spec/spec_helper.rb
-spec/typesafe_spec.rb
+lib/typesafe.rb            # entry point: requires json + all question files
+lib/typesafe/version.rb    # VERSION = "0.2.0"
+lib/typesafe/question.rb   # abstract base: instructions, type, to_h/to_json, ==/hash, freezing
+lib/typesafe/noul.rb       # Noul(instructions, criteria: nil) — criteria { true:, false: }, keys normalized to symbols
+lib/typesafe/choice.rb     # Choice(instructions, criteria:) — non-empty Hash, String/Symbol keys => String descriptions
+lib/typesafe/score.rb      # Score(instructions, criteria:) — non-empty Array of Strings
+spec/                      # RSpec (not minitest), mirroring lib/ layout
 ```
+
+Question design decisions:
+
+- No `Question` suffix on class names; `Typesafe::Question` is the abstract base class.
+- Questions are frozen, immutable value objects; they dup inputs and freeze their own copies (caller's objects are not frozen).
+- The question **id is NOT in the object** — it is the Hash key in the future request's `questions:` map (`{ refund_requested: Typesafe::Noul.new(...) }`).
+- Validation raises plain `ArgumentError`.
+- `#to_h` returns the API shape (`{ type:, instructions:, criteria: }`, Noul omits `criteria` when nil); `#to_json` serializes it.
 
 ## Commands
 
