@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/dtheofr/typesafe-jev-ruby/actions/workflows/ci.yml/badge.svg)](https://github.com/dtheofr/typesafe-jev-ruby/actions/workflows/ci.yml)
 [![Gem Version](https://img.shields.io/gem/v/typesafe-jev?logo=rubygems&color=brightgreen)](https://rubygems.org/gems/typesafe-jev)
-[![Ruby](https://img.shields.io/gem/ruby-version/typesafe-jev?label=ruby&color=red)](https://rubygems.org/gems/typesafe-jev)
+[![Ruby](https://img.shields.io/badge/ruby-%3E%3D%203.1-red?logo=ruby)](https://rubygems.org/gems/typesafe-jev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Ruby client for [Jev](https://docs.typesafe.ai), TypeSafe's System One model. Ask natural-language questions about your application state and get typed, probabilistic answers you can program against.
