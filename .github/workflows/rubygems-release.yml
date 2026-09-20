@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # rake release pushes the release tag + a throwaway branch
   id-token: write # required for RubyGems trusted publishing (OIDC)
 
 jobs:
@@ -30,8 +30,10 @@ jobs:
 
       # checkout@v4 leaves a detached HEAD, but bundler's `rake release`
       # (used by rubygems/release-gem) pushes the current branch by name.
+      # Use a throwaway branch: `main` is protected, so the default token
+      # cannot push to it — a new unprotected branch is fine.
       - name: Attach branch
-        run: git checkout -B main
+        run: git checkout -B release-from-ci
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
