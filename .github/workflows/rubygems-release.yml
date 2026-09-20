@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # required by release-gem to push the release tag
+  id-token: write # mandatory for RubyGems.org trusted publishing (OIDC)
 
 jobs:
   release:
@@ -26,6 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -40,18 +42,12 @@ jobs:
           PUBLISHED="$(curl -fsSL https://rubygems.org/api/v1/versions/typesafe-jev/latest.json | ruby -r json -e 'print JSON.parse(STDIN.read)["version"]' || true)"
           if [ "$GEM_VERSION" = "$PUBLISHED" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Version $GEM_VERSION already published on RubyGems — skipping release"
+            echo "Version $GEM_VERSION already published on RubyGems, skipping release"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "Version changed: $PUBLISHED -> $GEM_VERSION"
           fi
 
-      - name: Build gem
-        if: steps.version.outputs.changed == 'true'
-        run: gem build typesafe-jev.gemspec
-
       - name: Publish to RubyGems
         if: steps.version.outputs.changed == 'true'
-        run: gem push "typesafe-jev-$(ruby -r ./lib/typesafe/version -e 'print Typesafe::VERSION').gem"
-        env:
-          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        uses: rubygems/release-gem@v1
