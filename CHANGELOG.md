@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-09-20
 
 ### Added
 
@@ -43,6 +43,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   naming the key at construction time. The normalized options are dupped and
   frozen on the client (mutating the Hash passed at initialization has no
   effect); `evaluate` keeps its signature.
+
+### Documentation
+
+- **The README documents the automatic retries end to end**: retryable errors
+  (429, 529 and 5xx) and network failures wrapped in a retryable
+  `Typesafe::ConnectionError` are retried automatically, 2 retries by
+  default (3 attempts in total). The wait honors the server's `Retry-After`
+  / `Retry-After-Ms` header on a 429; otherwise it follows an exponential
+  backoff, 0.5 s base, doubled on each retry, capped at 8.0 s, with jitter.
+  The policy is tuned or disabled per client via `retry_options:` on
+  `Typesafe::Client.new` (inherited by `Typesafe::Jev.new`): `max_retries` /
+  `base_delay` / `max_delay`, with `max_retries: 0` restoring a single
+  attempt. Unknown keys and invalid values raise an `ArgumentError` naming
+  the key at construction time, and the normalized options are frozen on the
+  client. Retries are silent (no log, no callback) and replay the POST
+  verbatim; non-retryable errors (400, 401, 403, 404, 422) raise immediately
+  without any replay. See the README section "Retries".
 
 ## [1.0.0] - 2026-09-20
 

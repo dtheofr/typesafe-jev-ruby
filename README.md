@@ -90,7 +90,7 @@ Each answer type exposes its own accessors (`#noul`, `#choice`, `#probabilities`
 
 ## Errors
 
-Any non-2xx HTTP response raises a typed error. All inherit from `Typesafe::APIError` (root: `Typesafe::Error`), which carries `#status`, `#body`, `#headers`, `#request_id` and `#retryable?`.
+Any non-2xx HTTP response raises a typed error. All inherit from `Typesafe::APIError` (root: `Typesafe::Error`), which carries `#status`, `#body`, `#headers`, `#request_id` and `#retryable?`. A network failure that occurs before any HTTP response raises a retryable `Typesafe::ConnectionError` instead (see [Retries](#retries)).
 
 | Error | Status | Extras |
 |---|---|---|
@@ -102,20 +102,38 @@ Any non-2xx HTTP response raises a typed error. All inherit from `Typesafe::APIE
 | `Typesafe::RateLimitError` | 429 | `#retry_after` |
 | `Typesafe::OverloadedError` | 529 | |
 | `Typesafe::ServerError` | 5xx | |
+| `Typesafe::ConnectionError` | n/a (network, no HTTP response) | `#cause` (wrapped exception) |
+
+Retryable errors (429, 529, 5xx) and `ConnectionError` are retried automatically, then raised once the retry budget is exhausted; non-retryable errors (400, 401, 403, 404, 422) raise immediately. See [Retries](#retries) for the full policy.
 
 ```ruby
 begin
   Typesafe::Jev.evaluate(state: state, questions: questions)
-rescue Typesafe::RateLimitError => e
-  sleep(e.retry_after || 1.0)
-  retry
-rescue Typesafe::OverloadedError
-  sleep(2**attempt)
-  retry
+rescue Typesafe::ConnectionError => e
+  warn "TypeSafe unreachable: #{e.cause}"
 rescue Typesafe::APIError => e
-  raise "typesafe request failed (#{e.status}, request #{e.request_id}): #{e.body}"
+  raise "typesafe request failed (status #{e.status}, request #{e.request_id}): #{e.body}"
 end
 ```
+
+## Retries
+
+Retryable failures are retried automatically: rate limits (429), overload (529), server errors (5xx), everything `APIError#retryable?` covers, and network failures that occur before any HTTP response (refused connection, DNS failure, read/write timeout, reset connection), which are wrapped in a retryable `Typesafe::ConnectionError`. By default the client makes **2 retries** (3 attempts in total). The wait honors the server's `Retry-After` / `Retry-After-Ms` header when a 429 carries one; otherwise it is an exponential backoff starting at **0.5 s**, doubled on each retry, capped at **8.0 s**, with jitter so parallel clients do not align. Non-retryable errors (400, 401, 403, 404, 422) raise immediately, without any replay. The POST is replayed verbatim on each attempt (an evaluation is stateless), and retries are silent: no log output, no callback.
+
+The whole policy is configured once per client with a single `retry_options:` Hash:
+
+```ruby
+# defaults: { max_retries: 2, base_delay: 0.5, max_delay: 8.0 }
+client = Typesafe::Client.new(api_key: "sk-...", retry_options: { max_retries: 3 })
+
+# latency-sensitive path: back to a single attempt
+strict = Typesafe::Client.new(api_key: "sk-...", retry_options: { max_retries: 0 })
+
+# Typesafe::Jev inherits the option from Typesafe::Client
+jev = Typesafe::Jev.new(api_key: "sk-...", retry_options: { max_retries: 0 })
+```
+
+Accepted keys: `max_retries` (non-negative Integer), `base_delay` and `max_delay` (non-negative numbers). An absent key, a `nil` value, or `retry_options: nil` keeps the defaults; `max_retries: 0` restores a single attempt. Options are validated strictly at construction time (an unknown key, a typo for instance, or an invalid value raises an `ArgumentError` naming the key), and the normalized Hash is frozen on the client: mutating the Hash you passed later has no effect. The policy is fixed at initialization, so `evaluate`'s signature does not change and there is no per-call override.
 
 ## Configuration
 
@@ -128,6 +146,8 @@ jev = Typesafe::Jev.new(api_key: "sk-...")   # or explicit
 client = Typesafe::Client.new(api_key: "sk-...", model: "other-model")
 client.evaluate(state:, questions:, model: "one-off-model") # per-call override
 ```
+
+Both `Typesafe::Client.new` and `Typesafe::Jev.new` also take the retry policy as a `retry_options:` Hash at initialization; see [Retries](#retries).
 
 ## Documentation
 
