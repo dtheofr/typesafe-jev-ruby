@@ -106,6 +106,36 @@ module Typesafe
   # The server failed to process the request (5xx, excluding 529).
   class ServerError < APIError; end
 
+  # A network-level failure before any HTTP response: connection refused, DNS
+  # failure, connection/read/write timeout, reset connection or truncated
+  # stream. Wraps the underlying network exception — available via +cause+ —
+  # so that no raw +Net::HTTP+ / socket / timeout exception escapes the
+  # client. Marked retryable: a brief outage is absorbed by the automatic
+  # retry loop, and the error is raised only once the budget is exhausted.
+  #
+  #   begin
+  #     client.evaluate(state:, questions:)
+  #   rescue Typesafe::ConnectionError => e
+  #     warn "API unreachable: #{e.cause}"
+  #   end
+  #
+  # Unlike status errors, there is no HTTP status code: +status+ is nil.
+  class ConnectionError < APIError
+    # @param message [String] the rendered message.
+    # @raise The wrapped network exception is attached as +cause+ when the
+    #   error is raised from within the rescue that catches it.
+    def initialize(message:)
+      super(status: nil, message: message)
+    end
+
+    # A network failure may succeed when replayed after a delay: the outage is
+    # likely transient, so the error is retryable by construction.
+    # @return [true]
+    def retryable?
+      true
+    end
+  end
+
   # Builds error instances from raw HTTP responses.
   module Errors
     module_function
