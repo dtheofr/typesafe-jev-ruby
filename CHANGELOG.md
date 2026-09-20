@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0
+
+- Add response classes mirroring the question classes: abstract `Typesafe::Answer` base with `Answer.from_h` dispatching on the `type` tag, plus `Typesafe::NoulAnswer` (`noul`), `Typesafe::ChoiceAnswer` (`choice`, `probabilities`, `confidence`) and `Typesafe::ScoreAnswer` (`score`, `legend`, `probabilities`, `confidence`). Frozen, immutable value objects that validate their inputs and serialize via `#to_h`/`#to_json`.
+- Add `Typesafe::Usage` (token counts) and `Typesafe::Response` (`model`, `answers`, `usage`), with `Response.from_json`/`from_h` to parse an API response body into typed Answer objects; `Response#[]` accepts String or Symbol question ids.
+
 ## 0.4.1
 
 - Fix gemspec metadata: point `source_code_uri`/`changelog_uri` and author/email at the `dtheofr` GitHub account.
