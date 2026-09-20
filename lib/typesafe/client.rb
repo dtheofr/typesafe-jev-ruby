@@ -71,9 +71,11 @@ module Typesafe
     #   {Typesafe::OverloadedError} and {Typesafe::ServerError}.
     #
     # Retryable errors (429, 529 and 5xx) are retried automatically up to
-    # +RETRIES+ times with an exponential backoff; when the budget is
-    # exhausted, the last retryable error is raised. Non-retryable errors
-    # (400, 401, 403, 404, 422) raise immediately without any retry.
+    # +RETRIES+ times; the wait honors the server's +Retry-After+ /
+    # +Retry-After-Ms+ header on a 429, otherwise an exponential backoff
+    # applies. When the budget is exhausted, the last retryable error is
+    # raised. Non-retryable errors (400, 401, 403, 404, 422) raise
+    # immediately without any retry.
     def evaluate(state:, questions:, model: nil)
       model = model.nil? ? self.model : freeze_string(model, "model must be a non-empty String")
       questions = validate_questions!(questions)
@@ -105,14 +107,21 @@ module Typesafe
         raise error if retries >= RETRIES
 
         retries += 1
-        Kernel.sleep(delay_before_retry(retries))
+        Kernel.sleep(delay_before_retry(error, retries))
       end
     end
 
-    # Delay before retry +retry_number+: the base delay doubled on each retry,
-    # capped at +MAX_DELAY+ seconds, with equal jitter so parallel clients do
-    # not align (uniform between half the nominal delay and the nominal delay).
-    def delay_before_retry(retry_number)
+    # Delay before retry +retry_number+. When the server imposes the pace on a
+    # rate limit (429), its +Retry-After+ / +Retry-After-Ms+ header is honored
+    # exactly; otherwise the delay is the exponential backoff: the base delay
+    # doubled on each retry, capped at +MAX_DELAY+ seconds, with equal jitter
+    # so parallel clients do not align (uniform between half the nominal delay
+    # and the nominal delay). A non-numeric +Retry-After+ is ignored and falls
+    # back on the default backoff.
+    def delay_before_retry(error, retry_number)
+      server_delay = error.is_a?(RateLimitError) ? error.retry_after : nil
+      return server_delay unless server_delay.nil?
+
       nominal = [BASE_DELAY * (2**(retry_number - 1)), MAX_DELAY].min
       nominal * (0.5 + Kernel.rand * 0.5)
     end
