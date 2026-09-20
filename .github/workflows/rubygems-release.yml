@@ -8,8 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # rake release pushes the release tag + a throwaway branch
-  id-token: write # required for RubyGems trusted publishing (OIDC)
+  contents: read
 
 jobs:
   release:
@@ -27,13 +26,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      # checkout@v4 leaves a detached HEAD, but bundler's `rake release`
-      # (used by rubygems/release-gem) pushes the current branch by name.
-      # Use a throwaway branch: `main` is protected, so the default token
-      # cannot push to it — a new unprotected branch is fine.
-      - name: Attach branch
-        run: git checkout -B release-from-ci
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -54,6 +46,12 @@ jobs:
             echo "Version changed: $PUBLISHED -> $GEM_VERSION"
           fi
 
+      - name: Build gem
+        if: steps.version.outputs.changed == 'true'
+        run: gem build typesafe-jev.gemspec
+
       - name: Publish to RubyGems
         if: steps.version.outputs.changed == 'true'
-        uses: rubygems/release-gem@v1
+        run: gem push "typesafe-jev-$(ruby -r ./lib/typesafe/version -e 'print Typesafe::VERSION').gem"
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
