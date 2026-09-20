@@ -224,12 +224,22 @@ RSpec.describe Typesafe::Errors do
     end
   end
 
+  describe Typesafe::ConnectionError do
+    it "is a retryable Typesafe::APIError without any HTTP status" do
+      error = Typesafe::ConnectionError.new(message: "The TypeSafe API could not be reached: boom")
+
+      expect(Typesafe::ConnectionError).to be < Typesafe::APIError
+      expect(error).to be_retryable
+      expect(error.status).to be_nil
+    end
+  end
+
   describe Typesafe::Error do
     it "is the root of all gem errors" do
       [Typesafe::APIError, Typesafe::BadRequestError, Typesafe::AuthenticationError,
        Typesafe::PermissionDeniedError, Typesafe::NotFoundError,
        Typesafe::UnprocessableEntityError, Typesafe::RateLimitError,
-       Typesafe::OverloadedError, Typesafe::ServerError].each do |klass|
+       Typesafe::OverloadedError, Typesafe::ServerError, Typesafe::ConnectionError].each do |klass|
         expect(klass).to be < Typesafe::Error
       end
     end

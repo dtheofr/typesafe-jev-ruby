@@ -87,6 +87,20 @@ RSpec.describe Typesafe::Jev do
       expect(client.evaluate(state: state, questions: questions))
         .to eq(Typesafe::Response.from_h(example_response))
     end
+
+    it "inherits the network error wrapping: a refused connection raises Typesafe::ConnectionError" do
+      client = described_class.new(api_key: api_key)
+      allow(Kernel).to receive(:sleep)
+
+      stub_request(:post, endpoint)
+        .with(
+          headers: { "Authorization" => "Bearer #{api_key}" },
+          body: { "state" => state, "model" => "jev-latest", "questions" => { "is_urgent" => { "type" => "noul", "instructions" => "Does this convey urgency?" } } }
+        ).to_raise(Errno::ECONNREFUSED)
+
+      expect { client.evaluate(state: state, questions: questions) }
+        .to raise_error(Typesafe::ConnectionError)
+    end
   end
 
   describe ".evaluate one-shot" do
