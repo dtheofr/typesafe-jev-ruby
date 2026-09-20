@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- **Stability**: the public API shipped in 0.7.0 is now declared stable and covered by Semantic Versioning — breaking changes will require a major version bump from here on.
+- **Stability**: the public API shipped in 0.7.0 is now declared stable and covered by Semantic Versioning; breaking changes will require a major version bump from here on.
 
 ## [0.7.0] - 2026-09-20
 

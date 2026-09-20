@@ -7,7 +7,7 @@
 
 Ruby client for [Jev](https://docs.typesafe.ai), TypeSafe's System One model. Ask natural-language questions about your application state and get typed, probabilistic answers you can program against.
 
-**Zero runtime dependencies** — pure Ruby stdlib (`Net::HTTP`, `JSON`), so it works in plain Ruby and Rails alike.
+**Zero runtime dependencies**: pure Ruby stdlib (`Net::HTTP`, `JSON`), so it works in plain Ruby and Rails alike.
 
 ## Installation
 
@@ -36,10 +36,10 @@ response = Typesafe::Jev.evaluate(
       sales:     "Pre-sales questions"
     }),
     severity: Typesafe::Score.new("How severe is this ticket?", criteria: [
-      "Low — routine request",
-      "Medium — degraded experience",
-      "High — blocked user",
-      "Critical — money lost or security issue"
+      "Low: routine request",
+      "Medium: degraded experience",
+      "High: blocked user",
+      "Critical: money lost or security issue"
     ])
   }
 )
@@ -47,7 +47,7 @@ response = Typesafe::Jev.evaluate(
 response[:refund_requested].noul  # => 0.95 (yes/no probability, 0..1)
 response[:category].choice        # => "billing"
 response[:category].probabilities # => { "billing" => 0.88, "technical" => 0.12, "sales" => 0.0 }
-response[:severity].score         # => "High — blocked user"
+response[:severity].score         # => "High: blocked user"
 response.usage.input_tokens       # => 296
 ```
 
@@ -55,7 +55,7 @@ response.usage.input_tokens       # => 296
 
 ## Questions
 
-Questions are frozen, immutable value objects. The question **id is not in the object** — it is the Hash key in the `questions:` map, and answers come back under the same key.
+Questions are frozen, immutable value objects. The question **id is not in the object**; it is the Hash key in the `questions:` map, and answers come back under the same key.
 
 | Class | Answers with | Criteria |
 |---|---|---|
@@ -75,16 +75,16 @@ Typesafe::Score.new("How severe is this ticket?",
   criteria: ["Low", "Medium", "High", "Critical"])
 ```
 
-Invalid input raises `ArgumentError` at construction time, so bad questions fail fast — before any HTTP call.
+Invalid input raises `ArgumentError` at construction time, so bad questions fail fast, before any HTTP call.
 
 ## Responses
 
 `Client#evaluate` returns a frozen `Typesafe::Response`:
 
-- `response[id]` (or `response.answers`) — a typed `NoulAnswer`, `ChoiceAnswer` or `ScoreAnswer`; String and Symbol ids both work
-- `response.model` — the model that performed the evaluation
-- `response.usage` — `Typesafe::Usage` with `input_tokens` / `output_tokens`
-- `response.to_h` / `response.to_json` — the raw API shape
+- `response[id]` (or `response.answers`): a typed `NoulAnswer`, `ChoiceAnswer` or `ScoreAnswer`; String and Symbol ids both work
+- `response.model`: the model that performed the evaluation
+- `response.usage`: `Typesafe::Usage` with `input_tokens` / `output_tokens`
+- `response.to_h` / `response.to_json`: the raw API shape
 
 Each answer type exposes its own accessors (`#noul`, `#choice`, `#probabilities`, `#confidence`, `#score`, `#legend`, …) and serializes via `#to_h`/`#to_json`.
 

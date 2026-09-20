@@ -16,10 +16,10 @@ module Typesafe
   # The `detail` field of an error body comes in three shapes, all of which
   # are rendered into the exception message:
   #
-  # * a plain String — `{"detail": "Unknown model: jev-99"}`
-  # * a Hash with error_type/message —
+  # * a plain String: `{"detail": "Unknown model: jev-99"}`
+  # * a Hash with error_type/message:
   #   `{"detail": {"error_type": "authentication_error", "message": "..."}}`
-  # * an Array of validation entries (FastAPI/pydantic style) —
+  # * an Array of validation entries (FastAPI/pydantic style):
   #   `{"detail": [{"type": "missing", "loc": ["body", "questions"], "msg": "Field required"}]}`
   class APIError < Error
     # @return [Integer] the HTTP status code.

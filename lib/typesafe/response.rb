@@ -8,7 +8,7 @@ module Typesafe
   #   response = Typesafe::Response.from_json(json)
   #   response[:refund_requested] # => #<Typesafe::NoulAnswer @noul=0.95>
   #
-  # The answer objects do not carry their question id — it is the Hash key
+  # The answer objects do not carry their question id: it is the Hash key
   # under which each answer appears in {#answers}, mirroring how questions
   # are sent.
   class Response

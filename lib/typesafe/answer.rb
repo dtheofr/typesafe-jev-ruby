@@ -5,7 +5,7 @@ module Typesafe
   # System One API: {NoulAnswer}, {ChoiceAnswer}, and {ScoreAnswer}.
   #
   # An answer is an immutable value object mirroring its question: it carries
-  # what the model returned for one question, but not the question id — that
+  # what the model returned for one question, but not the question id; that
   # is the Hash key under which the answer appears in a {Response}.
   #
   # Use {Answer.from_h} (or {Response.from_json}) to build typed answers from

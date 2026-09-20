@@ -13,7 +13,7 @@ bundle exec rake spec   # run the test suite (default rake task)
 
 ## Conventions
 
-- **Zero runtime dependencies** — use Ruby stdlib (`Net::HTTP`, `JSON`) only. Development gems (rspec, webmock, …) go in the gemspec's development dependencies.
+- **Zero runtime dependencies**: use Ruby stdlib (`Net::HTTP`, `JSON`) only. Development gems (rspec, webmock, …) go in the gemspec's development dependencies.
 - **RSpec** for tests, mirroring the `lib/` layout (`lib/typesafe/foo.rb` → `spec/typesafe/foo_spec.rb`).
 - `# frozen_string_literal: true` at the top of every file.
 - Value objects are **frozen and immutable**; they dup and freeze their own copies of inputs without freezing the caller's objects.
@@ -39,4 +39,4 @@ Releases to RubyGems are automated: a GitHub Actions workflow publishes the gem 
 
 ## Reporting issues
 
-Use the [issue templates](.github/ISSUE_TEMPLATE) — bug reports should include a minimal reproduction and the gem version (`Typesafe::VERSION`).
+Use the [issue templates](.github/ISSUE_TEMPLATE); bug reports should include a minimal reproduction and the gem version (`Typesafe::VERSION`).
