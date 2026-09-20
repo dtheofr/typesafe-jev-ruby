@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- Fix gemspec metadata: point `source_code_uri`/`changelog_uri` and author/email at the `dtheofr` GitHub account.
+
 ## 0.4.0
 
 - Add `Typesafe::Jev`, a `Typesafe::Client` subclass with the model pinned to `jev-latest`: `Jev.new(api_key: nil).evaluate(...)` plus a one-shot `Typesafe::Jev.evaluate(state:, questions:, api_key: nil)`.
