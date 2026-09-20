@@ -10,13 +10,15 @@ Gem::Specification.new do |spec|
 
   spec.summary = "Ruby client for Jev, TypeSafe's System One model."
   spec.description = "Use Jev, TypeSafe's System One model, from Ruby or Rails."
-  spec.homepage = "https://docs.typesafe.ai"
+  spec.homepage = "https://github.com/dtheofr/typesafe-jev-ruby"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.1"
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/dtheofr/typesafe-jev-ruby"
   spec.metadata["changelog_uri"] = "https://github.com/dtheofr/typesafe-jev-ruby/blob/main/CHANGELOG.md"
+  spec.metadata["documentation_uri"] = "https://rubydoc.info/gems/typesafe-jev"
+  spec.metadata["rubygems_mfa_required"] = "true"
 
   spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rspec", "~> 3.13"

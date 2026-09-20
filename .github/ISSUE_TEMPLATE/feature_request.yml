@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest an idea for typesafe-jev
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what's missing or awkward about the current API?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like to happen? A small code sketch of the desired API is ideal.
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Sanity checks for this project.
+      options:
+        - label: This can be implemented with zero runtime dependencies (Ruby stdlib only).
+        - label: This is not a breaking change (or it justifies a major version bump).

@@ -1,0 +1,41 @@
+name: Bug report
+description: Report something that doesn't work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      content: Thanks for taking the time to file a bug! Please fill in the details below.
+  - type: input
+    id: version
+    attributes:
+      label: Gem version
+      description: Output of `Typesafe::VERSION` (or the version in your Gemfile.lock).
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: ruby
+    attributes:
+      label: Ruby version
+      description: Output of `ruby -v`.
+      placeholder: e.g. ruby 3.4.1
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A minimal reproduction (code snippet) and the expected vs actual behavior.
+      placeholder: |
+        ```ruby
+        # minimal repro
+        ```
+        Expected: …
+        Actual: …
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Stack traces, request/response bodies (redact API keys!), anything else.

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: TypeSafe documentation
+    url: https://docs.typesafe.ai
+    about: Official TypeSafe / Jev API documentation.
+  - name: Questions & discussions
+    url: https://github.com/dtheofr/typesafe-jev-ruby/discussions
+    about: Ask questions about using the gem here instead of opening an issue.
