@@ -19,9 +19,13 @@ module Typesafe
 
     # @param api_key [String, nil] the TypeSafe API key; falls back to the
     #   +TYPESAFE_API_KEY+ environment variable.
-    # @raise [ArgumentError] if no usable API key is found.
-    def initialize(api_key: nil)
-      super(api_key: api_key, model: PINNED_MODEL)
+    # @param retry_options [Hash{Symbol => Integer, Float}, nil] the retry
+    #   policy, forwarded to the client unchanged; see
+    #   {Typesafe::Client#initialize}.
+    # @raise [ArgumentError] if no usable API key is found, or +retry_options+
+    #   contains an unknown key or an invalid value.
+    def initialize(api_key: nil, retry_options: nil)
+      super(api_key: api_key, model: PINNED_MODEL, retry_options: retry_options)
     end
 
     # Evaluates a state against a map of questions with the pinned model.
