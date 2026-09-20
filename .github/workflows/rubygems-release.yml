@@ -28,6 +28,11 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      # checkout@v4 leaves a detached HEAD, but bundler's `rake release`
+      # (used by rubygems/release-gem) pushes the current branch by name.
+      - name: Attach branch
+        run: git checkout -B main
+
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
