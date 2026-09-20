@@ -1,0 +1,52 @@
+name: Release to RubyGems
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required for RubyGems trusted publishing (OIDC)
+
+jobs:
+  release:
+    name: Release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: rubygems-release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Check if version changed
+        id: version
+        run: |
+          GEM_VERSION="$(ruby -r ./lib/typesafe/version -e 'print Typesafe::VERSION')"
+          PUBLISHED="$(curl -fsSL https://rubygems.org/api/v1/versions/typesafe-jev/latest.json | ruby -r json -e 'print JSON.parse(STDIN.read)["version"]' || true)"
+          if [ "$GEM_VERSION" = "$PUBLISHED" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Version $GEM_VERSION already published on RubyGems — skipping release"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Version changed: $PUBLISHED -> $GEM_VERSION"
+          fi
+
+      - name: Publish to RubyGems
+        if: steps.version.outputs.changed == 'true'
+        uses: rubygems/release-gem@v1
