@@ -14,7 +14,7 @@ GEM
       rexml
     diff-lcs (1.6.2)
     hashdiff (1.2.1)
-    public_suffix (7.0.5)
+    public_suffix (6.0.2)
     rake (13.4.2)
     rexml (3.4.4)
     rspec (3.13.2)
@@ -40,6 +40,7 @@ PLATFORMS
   x86_64-linux
 
 DEPENDENCIES
+  public_suffix (< 7)
   rake (~> 13.0)
   rspec (~> 3.13)
   typesafe-jev!
