@@ -3,8 +3,6 @@
 require "spec_helper"
 
 RSpec.describe Typesafe::Client do
-  # Net::HTTPClientException was named Net::HTTPServerException before Ruby 3.3.
-  HTTP_CLIENT_EXCEPTION = Net.const_defined?(:HTTPClientException) ? Net::HTTPClientException : Net::HTTPServerException
   let(:api_key) { "sk-test-123" }
   let(:client) { described_class.new(api_key: api_key) }
 
@@ -229,32 +227,54 @@ RSpec.describe Typesafe::Client do
     end
 
     context "errors" do
-      it "raises for 401 Unauthorized" do
-        stub_request(:post, endpoint).to_return(status: 401, body: "{}")
+      it "raises AuthenticationError on 401 with the API message" do
+        stub_request(:post, endpoint).to_return(
+          status: 401,
+          body: JSON.generate(
+            "detail" => {
+              "error_type" => "authentication_error",
+              "message" => "Cannot authenticate with the server. Please check your API key and try again."
+            }
+          )
+        )
 
         expect { client.evaluate(state: state, questions: questions) }
-          .to raise_error(HTTP_CLIENT_EXCEPTION)
+          .to raise_error(Typesafe::AuthenticationError, /Cannot authenticate with the server/)
       end
 
-      it "raises for 422 Unprocessable Entity" do
+      it "raises UnprocessableEntityError on 422" do
         stub_request(:post, endpoint).to_return(status: 422, body: "{}")
 
         expect { client.evaluate(state: state, questions: questions) }
-          .to raise_error(HTTP_CLIENT_EXCEPTION)
+          .to raise_error(Typesafe::UnprocessableEntityError)
       end
 
-      it "raises for 429 Too Many Requests" do
-        stub_request(:post, endpoint).to_return(status: 429, body: "{}")
+      it "raises RateLimitError on 429" do
+        stub_request(:post, endpoint).to_return(status: 429, body: "{}", headers: { "Retry-After" => "2" })
 
         expect { client.evaluate(state: state, questions: questions) }
-          .to raise_error(HTTP_CLIENT_EXCEPTION)
+          .to raise_error(Typesafe::RateLimitError) { |error| expect(error.retry_after).to eq(2.0) }
       end
 
-      it "raises for 529 Overloaded" do
+      it "raises OverloadedError on 529" do
         stub_request(:post, endpoint).to_return(status: 529, body: "{}")
 
         expect { client.evaluate(state: state, questions: questions) }
-          .to raise_error(Net::HTTPFatalError)
+          .to raise_error(Typesafe::OverloadedError)
+      end
+
+      it "raises ServerError on 5xx" do
+        stub_request(:post, endpoint).to_return(status: 500, body: "{}")
+
+        expect { client.evaluate(state: state, questions: questions) }
+          .to raise_error(Typesafe::ServerError)
+      end
+
+      it "raises errors rescuable as Typesafe::Error" do
+        stub_request(:post, endpoint).to_return(status: 403, body: "{}")
+
+        expect { client.evaluate(state: state, questions: questions) }
+          .to raise_error(Typesafe::PermissionDeniedError)
       end
     end
   end

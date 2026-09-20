@@ -55,8 +55,11 @@ module Typesafe
     #   String/Symbol keys to Question values, +model+ is invalid, or the
     #   response body is not a valid response shape.
     # @raise [JSON::ParserError] if the response body is not valid JSON.
-    # @raise [Net::HTTPClientException, Net::HTTPFatalError] on any non-2xx
-    #   HTTP response.
+    # @raise [Typesafe::APIError] (or a subclass) on any non-2xx HTTP response:
+    #   {Typesafe::BadRequestError}, {Typesafe::AuthenticationError},
+    #   {Typesafe::PermissionDeniedError}, {Typesafe::NotFoundError},
+    #   {Typesafe::UnprocessableEntityError}, {Typesafe::RateLimitError},
+    #   {Typesafe::OverloadedError} and {Typesafe::ServerError}.
     def evaluate(state:, questions:, model: nil)
       model = model.nil? ? self.model : freeze_string(model, "model must be a non-empty String")
       questions = validate_questions!(questions)
@@ -68,7 +71,10 @@ module Typesafe
       )
 
       response = post(body)
-      response.value
+      unless response.is_a?(Net::HTTPSuccess)
+        raise Errors.from_response(status: response.code.to_i, headers: response, body: response.body)
+      end
+
       Response.from_json(response.body)
     end
 

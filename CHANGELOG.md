@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0
+
+- **Breaking**: `Typesafe::Client#evaluate` (and `Typesafe::Jev.evaluate`) now raises typed `Typesafe::Error` subclasses on any non-2xx response instead of raw `Net::HTTPClientException`/`Net::HTTPFatalError`: `BadRequestError` (400), `AuthenticationError` (401), `PermissionDeniedError` (403), `NotFoundError` (404), `UnprocessableEntityError` (422, with `#errors`), `RateLimitError` (429, with `#retry_after`), `OverloadedError` (529) and `ServerError` (5xx), all under the `Typesafe::APIError` base with `status`, `body`, `headers`, `request_id` and `#retryable?`. `Typesafe::Error` is the root rescuable class.
+
 ## 0.6.0
 
 - **Breaking**: `Typesafe::Client#evaluate` (and `Typesafe::Jev.evaluate`) now returns a typed `Typesafe::Response` instead of the raw parsed Hash; answers come back as `NoulAnswer`/`ChoiceAnswer`/`ScoreAnswer` objects accessible via `response[question_id]` (String or Symbol). Use `response.to_h` for the previous raw-Hash behavior.

@@ -35,8 +35,8 @@ module Typesafe
     # @raise [ArgumentError] if +questions+ is invalid, +model+ is not the
     #   pinned one, or the response body is not a valid response shape.
     # @raise [JSON::ParserError] if the response body is not valid JSON.
-    # @raise [Net::HTTPClientException, Net::HTTPFatalError] on any non-2xx
-    #   HTTP response.
+    # @raise [Typesafe::APIError] (or a subclass) on any non-2xx HTTP response;
+    #   see {Typesafe::Client#evaluate}.
     def evaluate(state:, questions:, model: nil)
       if model && model != PINNED_MODEL
         raise ArgumentError,

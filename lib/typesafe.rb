@@ -16,6 +16,7 @@ require_relative "typesafe/score_answer"
 
 require_relative "typesafe/usage"
 require_relative "typesafe/response"
+require_relative "typesafe/errors"
 require_relative "typesafe/client"
 require_relative "typesafe/jev"
 
