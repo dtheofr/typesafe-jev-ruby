@@ -116,11 +116,11 @@ module Typesafe
     # exactly; otherwise the delay is the exponential backoff: the base delay
     # doubled on each retry, capped at +MAX_DELAY+ seconds, with equal jitter
     # so parallel clients do not align (uniform between half the nominal delay
-    # and the nominal delay). A non-numeric +Retry-After+ is ignored and falls
-    # back on the default backoff.
+    # and the nominal delay). A non-numeric or non-positive +Retry-After+ is
+    # ignored and falls back on the default backoff.
     def delay_before_retry(error, retry_number)
       server_delay = error.is_a?(RateLimitError) ? error.retry_after : nil
-      return server_delay unless server_delay.nil?
+      return server_delay if server_delay && server_delay > 0
 
       nominal = [BASE_DELAY * (2**(retry_number - 1)), MAX_DELAY].min
       nominal * (0.5 + Kernel.rand * 0.5)

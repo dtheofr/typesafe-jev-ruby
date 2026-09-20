@@ -415,6 +415,20 @@ RSpec.describe Typesafe::Client do
         expect(sleeps[0]).to be_between(0.25, 0.5)
       end
 
+      [-1, 0].each do |value|
+        it "ignores a non-positive numeric Retry-After (#{value}) and falls back to the default backoff" do
+          stub_request(:post, endpoint).to_return(
+            { status: 429, body: "{}", headers: { "Retry-After" => value.to_s } },
+            { status: 200, body: JSON.generate(example_response) }
+          )
+
+          client.evaluate(state: state, questions: questions)
+
+          expect(sleeps.length).to eq(1)
+          expect(sleeps[0]).to be_between(0.25, 0.5)
+        end
+      end
+
       it "keeps the exponential backoff on a 429 without a Retry-After header" do
         stub_request(:post, endpoint).to_return(
           { status: 429, body: "{}" },
