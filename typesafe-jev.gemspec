@@ -20,6 +20,7 @@ Gem::Specification.new do |spec|
 
   spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rspec", "~> 3.13"
+  spec.add_development_dependency "webmock", "~> 3.0"
 
   spec.files = Dir["lib/**/*.rb", "LICENSE", "README.md", "CHANGELOG.md"]
   spec.require_paths = ["lib"]

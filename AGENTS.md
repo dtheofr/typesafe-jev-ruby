@@ -50,5 +50,6 @@ Single endpoint: `POST https://api.typesafe.ai/v1/systemone` with `Authorization
 
 ## Conventions
 
+- **Always bump the version** in `lib/typesafe/version.rb` (and add a `CHANGELOG.md` entry) whenever committing changes to the gem; include the new version in the commit message.
 - Ruby 3.4 locally (via mise). Freeze string literals in all files.
 - Git repo is initialized but has **no remote yet** — don't push, just commit.

@@ -7,6 +7,7 @@ require_relative "typesafe/question"
 require_relative "typesafe/noul"
 require_relative "typesafe/choice"
 require_relative "typesafe/score"
+require_relative "typesafe/client"
 
 module Typesafe
 end
