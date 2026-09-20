@@ -70,6 +70,23 @@ RSpec.describe Typesafe::Jev do
       expect { client.evaluate(state: state, questions: questions, model: "jev-1.13.0") }
         .to raise_error(ArgumentError, /pins the model/)
     end
+
+    it "inherits the default retries on retryable errors" do
+      client = described_class.new(api_key: api_key)
+      allow(Kernel).to receive(:sleep)
+
+      stub_request(:post, endpoint)
+        .with(
+          headers: { "Authorization" => "Bearer #{api_key}" },
+          body: { "state" => state, "model" => "jev-latest", "questions" => { "is_urgent" => { "type" => "noul", "instructions" => "Does this convey urgency?" } } }
+        ).to_return(
+          { status: 529, body: "{}" },
+          { status: 200, body: JSON.generate(example_response) }
+        )
+
+      expect(client.evaluate(state: state, questions: questions))
+        .to eq(Typesafe::Response.from_h(example_response))
+    end
   end
 
   describe ".evaluate one-shot" do
