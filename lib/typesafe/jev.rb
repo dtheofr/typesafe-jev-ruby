@@ -31,9 +31,10 @@ module Typesafe
     # @param questions [Hash{String, Symbol => Question}] question ids mapped
     #   to Question objects; answers come back under the same keys.
     # @param model [String, nil] must be nil or "jev-latest".
-    # @return [Hash] the parsed response body.
-    # @raise [ArgumentError] if +questions+ is invalid or +model+ is not the
-    #   pinned one.
+    # @return [Response] the parsed response.
+    # @raise [ArgumentError] if +questions+ is invalid, +model+ is not the
+    #   pinned one, or the response body is not a valid response shape.
+    # @raise [JSON::ParserError] if the response body is not valid JSON.
     # @raise [Net::HTTPClientException, Net::HTTPFatalError] on any non-2xx
     #   HTTP response.
     def evaluate(state:, questions:, model: nil)
@@ -53,7 +54,7 @@ module Typesafe
     #   to Question objects.
     # @param api_key [String, nil] the TypeSafe API key; falls back to the
     #   +TYPESAFE_API_KEY+ environment variable.
-    # @return [Hash] the parsed response body.
+    # @return [Response] the parsed response.
     def self.evaluate(state:, questions:, api_key: nil)
       new(api_key: api_key).evaluate(state: state, questions: questions)
     end

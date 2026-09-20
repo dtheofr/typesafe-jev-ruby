@@ -57,12 +57,12 @@ RSpec.describe Typesafe::Jev do
 
     it "evaluates with the pinned model" do
       expect(described_class.new(api_key: api_key).evaluate(state: state, questions: questions))
-        .to eq(example_response)
+        .to eq(Typesafe::Response.from_h(example_response))
     end
 
     it "accepts the pinned model explicitly at call time" do
       expect(described_class.new(api_key: api_key).evaluate(state: state, questions: questions, model: "jev-latest"))
-        .to eq(example_response)
+        .to eq(Typesafe::Response.from_h(example_response))
     end
 
     it "raises when a different model is requested" do
@@ -83,7 +83,7 @@ RSpec.describe Typesafe::Jev do
         .with(headers: { "Authorization" => "Bearer #{api_key}" })
         .to_return(status: 200, body: JSON.generate(example_response))
 
-      expect(described_class.evaluate(state: state, questions: questions)).to eq(example_response)
+      expect(described_class.evaluate(state: state, questions: questions)).to eq(Typesafe::Response.from_h(example_response))
     end
 
     it "accepts an explicit api key" do
@@ -92,7 +92,7 @@ RSpec.describe Typesafe::Jev do
         .to_return(status: 200, body: JSON.generate(example_response))
 
       expect(described_class.evaluate(state: state, questions: questions, api_key: api_key))
-        .to eq(example_response)
+        .to eq(Typesafe::Response.from_h(example_response))
     end
   end
 end

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0
+
+- **Breaking**: `Typesafe::Client#evaluate` (and `Typesafe::Jev.evaluate`) now returns a typed `Typesafe::Response` instead of the raw parsed Hash; answers come back as `NoulAnswer`/`ChoiceAnswer`/`ScoreAnswer` objects accessible via `response[question_id]` (String or Symbol). Use `response.to_h` for the previous raw-Hash behavior.
+
 ## 0.5.0
 
 - Add response classes mirroring the question classes: abstract `Typesafe::Answer` base with `Answer.from_h` dispatching on the `type` tag, plus `Typesafe::NoulAnswer` (`noul`), `Typesafe::ChoiceAnswer` (`choice`, `probabilities`, `confidence`) and `Typesafe::ScoreAnswer` (`score`, `legend`, `probabilities`, `confidence`). Frozen, immutable value objects that validate their inputs and serialize via `#to_h`/`#to_json`.

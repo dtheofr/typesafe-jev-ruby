@@ -40,8 +40,9 @@ module Typesafe
       freeze
     end
 
-    # Evaluates a state against a map of questions and returns the raw JSON
-    # response as a Hash, e.g. +{"model"=>..., "answers"=>{...}, "usage"=>...}+.
+    # Evaluates a state against a map of questions and returns a {Response}
+    # with one typed {Answer} per question, e.g. `response[:refund_requested]`.
+    # `response.to_h` gives the raw parsed body as a Hash.
     #
     # @param state [String, Object, Array] the content to evaluate; passed
     #   through as-is.
@@ -49,9 +50,11 @@ module Typesafe
     #   to Question objects; answers come back under the same keys.
     # @param model [String, nil] model for this call; falls back to the model
     #   given at initialization.
-    # @return [Hash] the parsed response body.
+    # @return [Response] the parsed response.
     # @raise [ArgumentError] if +questions+ is not a non-empty Hash of
-    #   String/Symbol keys to Question values, or +model+ is invalid.
+    #   String/Symbol keys to Question values, +model+ is invalid, or the
+    #   response body is not a valid response shape.
+    # @raise [JSON::ParserError] if the response body is not valid JSON.
     # @raise [Net::HTTPClientException, Net::HTTPFatalError] on any non-2xx
     #   HTTP response.
     def evaluate(state:, questions:, model: nil)
@@ -66,7 +69,7 @@ module Typesafe
 
       response = post(body)
       response.value
-      JSON.parse(response.body)
+      Response.from_json(response.body)
     end
 
     private

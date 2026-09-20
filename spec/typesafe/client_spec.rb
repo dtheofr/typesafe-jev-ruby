@@ -207,8 +207,24 @@ RSpec.describe Typesafe::Client do
         stub_request(:post, endpoint).to_return(status: 200, body: JSON.generate(example_response))
       end
 
-      it "returns the parsed JSON body as a Hash" do
-        expect(client.evaluate(state: state, questions: questions)).to eq(example_response)
+      it "returns a Typesafe::Response with typed answers" do
+        response = client.evaluate(state: state, questions: questions)
+        expect(response).to eq(Typesafe::Response.from_h(example_response))
+        expect(response.model).to eq("jev-1.13.0")
+        expect(response[:is_urgent]).to eq(Typesafe::NoulAnswer.new(noul: 0.95))
+        expect(response.usage).to eq(Typesafe::Usage.new(input_tokens: 296, output_tokens: 20))
+      end
+
+      it "round-trips to the wire shape via #to_json" do
+        body = JSON.parse(client.evaluate(state: state, questions: questions).to_json)
+        expect(body).to eq(example_response)
+      end
+
+      it "raises on a malformed response body" do
+        stub_request(:post, endpoint).to_return(status: 200, body: JSON.generate({ "model" => "jev" }))
+
+        expect { client.evaluate(state: state, questions: questions) }
+          .to raise_error(ArgumentError, /answers/)
       end
     end
 
