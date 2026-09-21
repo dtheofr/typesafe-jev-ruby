@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    typesafe-jev (1.0.0)
+    typesafe-jev (1.1.0)
 
 GEM
   remote: https://rubygems.org/
