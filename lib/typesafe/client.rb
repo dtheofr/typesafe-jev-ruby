@@ -23,14 +23,25 @@ module Typesafe
     API_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 
     # Default retry policy for retryable failures — the 429/529/5xx status
-    # errors and the +ConnectionError+ wrapping network errors: at most
-    # +RETRIES+ retries (so a total of +RETRIES + 1+ attempts), with an
-    # exponential backoff between attempts starting at +BASE_DELAY+ seconds,
-    # doubled on each retry and capped at +MAX_DELAY+, with jitter.
+    # errors and the +ConnectionError+ wrapping network errors: at most 2
+    # retries (so a total of 3 attempts), with an exponential backoff between
+    # attempts starting at 0.5 s, doubled on each retry and capped at 8 s,
+    # with jitter. These are the defaults used when a key is absent or nil;
+    # the policy is configured per client via +retry_options:+. See
+    # {#normalize_retry_options}.
     RETRIES = 2
     BASE_DELAY = 0.5
     MAX_DELAY = 8.0
-    private_constant :RETRIES, :BASE_DELAY, :MAX_DELAY
+
+    # The normalized retry policy: every accepted key present, with the
+    # defaults 2 / 0.5 / 8.0. +retry_options:+ fills it with the given keys
+    # and defaults for the rest.
+    DEFAULT_RETRY_OPTIONS = {
+      max_retries: RETRIES,
+      base_delay: BASE_DELAY,
+      max_delay: MAX_DELAY
+    }.freeze
+    private_constant :RETRIES, :BASE_DELAY, :MAX_DELAY, :DEFAULT_RETRY_OPTIONS
 
     # Network-level exception families wrapped into a +ConnectionError+ before
     # any HTTP response: socket and DNS failures, connection/read/write
@@ -65,16 +76,34 @@ module Typesafe
     # @return [String] the default model used when +evaluate+ gets none.
     attr_reader :model
 
+    # @return [Hash{Symbol => Integer, Float}] the normalized retry policy,
+    #   frozen: all three accepted keys present (+max_retries+, +base_delay+,
+    #   +max_delay+) with the effective values — the given ones where the
+    #   caller provided them, the defaults (2 / 0.5 / 8.0) otherwise. The
+    #   Hash is a private copy: mutating the Hash passed at initialization
+    #   has no effect once the client is built.
+    attr_reader :retry_options
+
     # @param api_key [String, nil] the TypeSafe API key; falls back to the
     #   +TYPESAFE_API_KEY+ environment variable.
     # @param model [String, nil] the default model; defaults to "jev-latest".
-    # @raise [ArgumentError] if no usable API key is found or +model+ is
-    #   present but not a non-empty String.
-    def initialize(api_key: nil, model: nil)
+    # @param retry_options [Hash{Symbol => Integer, Float}, nil] the retry
+    #   policy for retryable failures. Accepted keys: +max_retries+
+    #   (non-negative Integer), +base_delay+ and +max_delay+ (non-negative
+    #   numbers); absent keys or +nil+ values fall back to the defaults
+    #   2 / 0.5 / 8.0, and +nil+ means every default. Any other key or an
+    #   invalid value raises an +ArgumentError+ naming the key. The strategy
+    #   itself is not configurable in v1: delays are either the server's
+    #   +Retry-After+ on a 429 or the exponential backoff with jitter.
+    # @raise [ArgumentError] if no usable API key is found, +model+ is
+    #   present but not a non-empty String, or +retry_options+ contains an
+    #   unknown key or an invalid value.
+    def initialize(api_key: nil, model: nil, retry_options: nil)
       @api_key = freeze_string(api_key || ENV.fetch("TYPESAFE_API_KEY") { nil },
                                "api_key must be a non-empty String " \
                                "(passed at initialization or set in the TYPESAFE_API_KEY environment variable)")
       @model = freeze_string(model || DEFAULT_MODEL, "model must be a non-empty String")
+      @retry_options = normalize_retry_options(retry_options)
       freeze
     end
 
@@ -106,11 +135,15 @@ module Typesafe
     #   {Typesafe::OverloadedError} and {Typesafe::ServerError}.
     #
     # Retryable errors — 429, 529, 5xx and network failures — are retried
-    # automatically up to +RETRIES+ times; the wait honors the server's
-    # +Retry-After+ / +Retry-After-Ms+ header on a 429, otherwise an
-    # exponential backoff applies. When the budget is exhausted, the last
-    # retryable error is raised. Non-retryable errors (400, 401, 403, 404,
-    # 422) raise immediately without any retry.
+    # automatically up to the configured +max_retries+ (2 by default); the
+    # wait honors the server's +Retry-After+ / +Retry-After-Ms+ header on a
+    # 429, otherwise an exponential backoff applies, starting at the
+    # configured +base_delay+ and capped at the configured +max_delay+. When
+    # the budget is exhausted, the last retryable error is raised. A
+    # +max_retries+ of 0 restores the single-attempt behavior of a client
+    # without retries. Non-retryable errors (400, 401, 403, 404, 422) raise
+    # immediately without any retry. The policy is fixed at initialization:
+    # the +evaluate+ signature does not change.
     def evaluate(state:, questions:, model: nil)
       model = model.nil? ? self.model : freeze_string(model, "model must be a non-empty String")
       questions = validate_questions!(questions)
@@ -127,7 +160,62 @@ module Typesafe
 
     private
 
-    # POSTs +body+ and retries retryable failures up to +RETRIES+ times.
+    # Builds the frozen, normalized retry policy from the caller's
+    # +retry_options+: every accepted key present, unknown keys and invalid
+    # values rejected with an +ArgumentError+ naming the key, and the result
+    # frozen — a fresh Hash, so mutating the caller's object has no effect.
+    def normalize_retry_options(retry_options)
+      options = DEFAULT_RETRY_OPTIONS.dup
+      unless retry_options.nil?
+        unless retry_options.is_a?(Hash)
+          raise ArgumentError, "retry_options must be a Hash, got #{retry_options.inspect}"
+        end
+
+        retry_options.each do |key, value|
+          next if value.nil?
+
+          case key
+          when :max_retries
+            validate_max_retries!(key, value)
+            options[key] = value
+          when :base_delay, :max_delay
+            validate_delay!(key, value)
+            options[key] = value.to_f
+          else
+            raise ArgumentError,
+                  "unknown retry_options key #{key.inspect} " \
+                  "(accepted keys: :max_retries, :base_delay, :max_delay)"
+          end
+        end
+      end
+
+      options.freeze
+    end
+
+    # Raises an +ArgumentError+ naming +key+ unless +value+ is a
+    # non-negative Integer — the +max_retries+ contract: any other numeric
+    # (a Float, e.g.) or a non-numeric is rejected, and a negative budget is
+    # meaningless. 0 is valid and means a single attempt.
+    def validate_max_retries!(key, value)
+      return if value.is_a?(Integer) && value >= 0
+
+      raise ArgumentError,
+            "retry_options :#{key} must be a non-negative Integer, got #{value.inspect}"
+    end
+
+    # Raises an +ArgumentError+ naming +key+ unless +value+ is a
+    # non-negative number — the +base_delay+ / +max_delay+ contract. Only
+    # ordered numbers qualify (Float, Integer, Rational); anything else (a
+    # String, a Boolean, an unordered +Complex+) is rejected.
+    def validate_delay!(key, value)
+      return if value.is_a?(Numeric) && value.respond_to?(:>=) && value >= 0
+
+      raise ArgumentError,
+            "retry_options :#{key} must be a non-negative number, got #{value.inspect}"
+    end
+
+    # POSTs +body+ and retries retryable failures up to the configured
+    # +max_retries+ times.
     # The same +body+ is replayed verbatim on every attempt: an evaluation is
     # stateless, so the replay is safe. Each attempt either returns the HTTP
     # response, or an +APIError+ — the status error built from a non-2xx
@@ -142,7 +230,7 @@ module Typesafe
         return outcome if outcome.is_a?(Net::HTTPSuccess)
 
         raise outcome unless outcome.retryable?
-        raise outcome if retries >= RETRIES
+        raise outcome if retries >= retry_options[:max_retries]
 
         retries += 1
         Kernel.sleep(delay_before_retry(outcome, retries))
@@ -165,16 +253,17 @@ module Typesafe
     # Delay before retry +retry_number+. When the server imposes the pace on a
     # rate limit (429), its +Retry-After+ / +Retry-After-Ms+ header is honored
     # exactly; otherwise — including for +ConnectionError+, which carries no
-    # HTTP headers — the delay is the exponential backoff: the base delay
-    # doubled on each retry, capped at +MAX_DELAY+ seconds, with equal jitter
-    # so parallel clients do not align (uniform between half the nominal delay
-    # and the nominal delay). A non-numeric or non-positive +Retry-After+ is
-    # ignored and falls back on the default backoff.
+    # HTTP headers — the delay is the exponential backoff: the configured
+    # +base_delay+ doubled on each retry, capped at the configured
+    # +max_delay+ seconds, with equal jitter so parallel clients do not align
+    # (uniform between half the nominal delay and the nominal delay). A
+    # non-numeric or non-positive +Retry-After+ is ignored and falls back on
+    # the default backoff.
     def delay_before_retry(error, retry_number)
       server_delay = error.is_a?(RateLimitError) ? error.retry_after : nil
       return server_delay if server_delay && server_delay > 0
 
-      nominal = [BASE_DELAY * (2**(retry_number - 1)), MAX_DELAY].min
+      nominal = [retry_options[:base_delay] * (2**(retry_number - 1)), retry_options[:max_delay]].min
       nominal * (0.5 + Kernel.rand * 0.5)
     end
 

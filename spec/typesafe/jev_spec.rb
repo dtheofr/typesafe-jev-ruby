@@ -44,6 +44,18 @@ RSpec.describe Typesafe::Jev do
     it "pins the model to \"jev-latest\"" do
       expect(described_class.new(api_key: api_key).model).to eq("jev-latest")
     end
+
+    it "accepts retry_options and exposes the normalized, frozen policy" do
+      client = described_class.new(api_key: api_key, retry_options: { max_retries: 0 })
+
+      expect(client.retry_options).to eq(max_retries: 0, base_delay: 0.5, max_delay: 8.0)
+      expect(client.retry_options).to be_frozen
+    end
+
+    it "validates retry_options strictly, raising an ArgumentError at construction" do
+      expect { described_class.new(api_key: api_key, retry_options: { max_retrie: 3 }) }
+        .to raise_error(ArgumentError, /max_retrie/)
+    end
   end
 
   describe "#evaluate" do
@@ -100,6 +112,42 @@ RSpec.describe Typesafe::Jev do
 
       expect { client.evaluate(state: state, questions: questions) }
         .to raise_error(Typesafe::ConnectionError)
+    end
+
+    it "reflects retry_options: { max_retries: 0 } with a single attempt" do
+      client = described_class.new(api_key: api_key, retry_options: { max_retries: 0 })
+      allow(Kernel).to receive(:sleep)
+
+      stub = stub_request(:post, endpoint)
+        .with(
+          headers: { "Authorization" => "Bearer #{api_key}" },
+          body: { "state" => state, "model" => "jev-latest", "questions" => { "is_urgent" => { "type" => "noul", "instructions" => "Does this convey urgency?" } } }
+        ).to_return(status: 529, body: "{}")
+
+      expect { client.evaluate(state: state, questions: questions) }
+        .to raise_error(Typesafe::OverloadedError)
+
+      expect(stub).to have_been_requested.once
+    end
+
+    it "reflects a configured base_delay in the requested sleeps" do
+      sleeps = []
+      client = described_class.new(api_key: api_key, retry_options: { max_retries: 1, base_delay: 1.0 })
+      allow(Kernel).to receive(:sleep) { |delay| sleeps << delay }
+
+      stub_request(:post, endpoint)
+        .with(
+          headers: { "Authorization" => "Bearer #{api_key}" },
+          body: { "state" => state, "model" => "jev-latest", "questions" => { "is_urgent" => { "type" => "noul", "instructions" => "Does this convey urgency?" } } }
+        ).to_return(
+          { status: 529, body: "{}" },
+          { status: 200, body: JSON.generate(example_response) }
+        )
+
+      client.evaluate(state: state, questions: questions)
+
+      expect(sleeps.length).to eq(1)
+      expect(sleeps[0]).to be_between(0.5, 1.0)
     end
   end
 

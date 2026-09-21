@@ -76,6 +76,102 @@ RSpec.describe Typesafe::Client do
       expect(model).not_to be_frozen
       expect(client).to be_frozen
     end
+
+    describe "retry_options" do
+      it "defaults to 2 retries, a 0.5 s base delay and an 8 s cap, exposed normalized and frozen" do
+        client = described_class.new(api_key: api_key)
+
+        expect(client.retry_options).to eq(max_retries: 2, base_delay: 0.5, max_delay: 8.0)
+        expect(client.retry_options[:max_retries]).to be_a(Integer)
+        expect(client.retry_options[:base_delay]).to be_a(Float)
+        expect(client.retry_options[:max_delay]).to be_a(Float)
+        expect(client.retry_options).to be_frozen
+        expect(client).to be_frozen
+      end
+
+      it "treats retry_options: nil as all defaults" do
+        client = described_class.new(api_key: api_key, retry_options: nil)
+
+        expect(client.retry_options).to eq(max_retries: 2, base_delay: 0.5, max_delay: 8.0)
+      end
+
+      it "fills absent keys with the defaults, keeping the given ones" do
+        client = described_class.new(api_key: api_key, retry_options: { max_retries: 0 })
+
+        expect(client.retry_options).to eq(max_retries: 0, base_delay: 0.5, max_delay: 8.0)
+      end
+
+      it "treats nil values as absent" do
+        client = described_class.new(
+          api_key: api_key,
+          retry_options: { max_retries: nil, base_delay: nil, max_delay: nil }
+        )
+
+        expect(client.retry_options).to eq(max_retries: 2, base_delay: 0.5, max_delay: 8.0)
+      end
+
+      it "accepts Integer and Float delays, normalizing them to Float" do
+        client = described_class.new(api_key: api_key, retry_options: { base_delay: 1, max_delay: 4 })
+
+        expect(client.retry_options).to eq(max_retries: 2, base_delay: 1.0, max_delay: 4.0)
+        expect(client.retry_options[:base_delay]).to be_a(Float)
+        expect(client.retry_options[:max_delay]).to be_a(Float)
+      end
+
+      it "freezes its own copy without freezing the caller's Hash" do
+        options = { max_retries: 1, base_delay: 0.5, max_delay: 8.0 }
+        client = described_class.new(api_key: api_key, retry_options: options)
+
+        expect(client.retry_options).to be_frozen
+        expect(options).not_to be_frozen
+      end
+
+      it "is unaffected by mutating the Hash passed at construction" do
+        options = { max_retries: 1, base_delay: 0.5, max_delay: 8.0 }
+        client = described_class.new(api_key: api_key, retry_options: options)
+        options[:max_retries] = 5
+
+        expect(client.retry_options[:max_retries]).to eq(1)
+      end
+
+      context "validation" do
+        it "raises on an unknown key, naming the key in the message" do
+          expect { described_class.new(api_key: api_key, retry_options: { max_retrie: 3 }) }
+            .to raise_error(ArgumentError, /max_retrie/)
+        end
+
+        it "raises on a String key, naming the key in the message" do
+          expect { described_class.new(api_key: api_key, retry_options: { "max_retries" => 2 }) }
+            .to raise_error(ArgumentError, /max_retries/)
+        end
+
+        it "raises when retry_options is not a Hash" do
+          expect { described_class.new(api_key: api_key, retry_options: [1, 2]) }
+            .to raise_error(ArgumentError, /retry_options must be a Hash/)
+        end
+
+        it "raises naming the key when max_retries is not a non-negative Integer" do
+          [-1, 2.5, "2", true].each do |value|
+            expect { described_class.new(api_key: api_key, retry_options: { max_retries: value }) }
+              .to raise_error(ArgumentError, /max_retries/)
+          end
+        end
+
+        it "raises naming the key when base_delay is not a non-negative number" do
+          [-0.5, "0.5", true].each do |value|
+            expect { described_class.new(api_key: api_key, retry_options: { base_delay: value }) }
+              .to raise_error(ArgumentError, /base_delay/)
+          end
+        end
+
+        it "raises naming the key when max_delay is not a non-negative number" do
+          [-1, "8", true].each do |value|
+            expect { described_class.new(api_key: api_key, retry_options: { max_delay: value }) }
+              .to raise_error(ArgumentError, /max_delay/)
+          end
+        end
+      end
+    end
   end
 
   describe "#evaluate" do
@@ -293,6 +389,89 @@ RSpec.describe Typesafe::Client do
         allow(Kernel).to receive(:sleep) { |delay| sleeps << delay }
       end
 
+      context "configured policy" do
+        it "performs a single attempt with max_retries: 0, raising on the first retryable failure" do
+          client = described_class.new(api_key: api_key, retry_options: { max_retries: 0 })
+          stub = stub_request(:post, endpoint).to_return(status: 529, body: "{}")
+
+          expect { client.evaluate(state: state, questions: questions) }
+            .to raise_error(Typesafe::OverloadedError)
+
+          expect(stub).to have_been_requested.once
+          expect(sleeps).to be_empty
+        end
+
+        it "retries with a looser base_delay, observable in the requested sleeps" do
+          client = described_class.new(api_key: api_key, retry_options: { max_retries: 1, base_delay: 1.0 })
+
+          stub_request(:post, endpoint).to_return(
+            { status: 529, body: "{}" },
+            { status: 200, body: JSON.generate(example_response) }
+          )
+
+          client.evaluate(state: state, questions: questions)
+
+          expect(sleeps.length).to eq(1)
+          expect(sleeps[0]).to be_between(0.5, 1.0)
+        end
+
+        it "retries with a tighter base_delay, observable in the requested sleeps" do
+          client = described_class.new(api_key: api_key, retry_options: { max_retries: 1, base_delay: 0.1 })
+
+          stub_request(:post, endpoint).to_return(
+            { status: 529, body: "{}" },
+            { status: 200, body: JSON.generate(example_response) }
+          )
+
+          client.evaluate(state: state, questions: questions)
+
+          expect(sleeps.length).to eq(1)
+          expect(sleeps[0]).to be_between(0.05, 0.1)
+        end
+
+        it "caps the exponential backoff at the configured max_delay" do
+          client = described_class.new(
+            api_key: api_key,
+            retry_options: { max_retries: 2, base_delay: 4.0, max_delay: 0.5 }
+          )
+
+          stub_request(:post, endpoint).to_return(
+            { status: 529, body: "{}" },
+            { status: 529, body: "{}" },
+            { status: 200, body: JSON.generate(example_response) }
+          )
+
+          client.evaluate(state: state, questions: questions)
+
+          expect(sleeps.length).to eq(2)
+          expect(sleeps[0]).to be_between(0.25, 0.5)
+          expect(sleeps[1]).to be_between(0.25, 0.5)
+        end
+
+        it "exhausts the budget after max_retries retries" do
+          client = described_class.new(api_key: api_key, retry_options: { max_retries: 1 })
+          stub = stub_request(:post, endpoint).to_return(status: 529, body: "{}")
+
+          expect { client.evaluate(state: state, questions: questions) }
+            .to raise_error(Typesafe::OverloadedError)
+
+          expect(stub).to have_been_requested.times(2)
+        end
+
+        [nil, {}, { max_retries: nil, base_delay: nil, max_delay: nil }].each do |options|
+          it "keeps the default behavior with retry_options: #{options.inspect}" do
+            client = described_class.new(api_key: api_key, retry_options: options)
+            stub = stub_request(:post, endpoint).to_return(status: 529, body: "{}")
+
+            expect { client.evaluate(state: state, questions: questions) }
+              .to raise_error(Typesafe::OverloadedError)
+
+            expect(stub).to have_been_requested.times(3)
+            expect(client.retry_options).to eq(max_retries: 2, base_delay: 0.5, max_delay: 8.0)
+          end
+        end
+      end
+
       it "succeeds after a 429, replaying the identical request" do
         stub = stub_request(:post, endpoint)
           .with(
@@ -450,6 +629,17 @@ RSpec.describe Typesafe::Client do
 
       before do
         allow(Kernel).to receive(:sleep) { |delay| sleeps << delay }
+      end
+
+      it "with max_retries: 0, performs a single attempt on a network failure" do
+        client = described_class.new(api_key: api_key, retry_options: { max_retries: 0 })
+        stub = stub_request(:post, endpoint).to_raise(Errno::ECONNREFUSED)
+
+        expect { client.evaluate(state: state, questions: questions) }
+          .to raise_error(Typesafe::ConnectionError)
+
+        expect(stub).to have_been_requested.once
+        expect(sleeps).to be_empty
       end
 
       # Representative network-failure families. Resolv::ResolvError exists

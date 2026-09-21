@@ -33,6 +33,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   exponential backoff, then raised once the budget is exhausted. A brief
   outage is therefore absorbed by the automatic retries.
 
+- **Configurable retry policy via `retry_options:`**: `Typesafe::Client.new`
+  (and `Typesafe::Jev.new`) now accept a single `retry_options:` Hash that
+  tunes the retry loop — `max_retries` (2 by default), `base_delay` (0.5 s)
+  and `max_delay` (8.0 s). Absent keys, `nil` values and `retry_options: nil`
+  keep the defaults, and `max_retries: 0` restores the
+  single-attempt behavior. Unknown keys and invalid values (negative or
+  non-numeric delays, non-Integer `max_retries`) raise an `ArgumentError`
+  naming the key at construction time. The normalized options are dupped and
+  frozen on the client (mutating the Hash passed at initialization has no
+  effect); `evaluate` keeps its signature.
+
 ## [1.0.0] - 2026-09-20
 
 ### Added
