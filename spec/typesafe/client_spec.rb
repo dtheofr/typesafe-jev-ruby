@@ -227,6 +227,12 @@ RSpec.describe Typesafe::Client do
     end
 
     context "errors" do
+      # The default retry policy sleeps between retries; stub the Kernel sleep
+      # so these retryable-error scenarios stay fast and deterministic.
+      before do
+        allow(Kernel).to receive(:sleep)
+      end
+
       it "raises AuthenticationError on 401 with the API message" do
         stub_request(:post, endpoint).to_return(
           status: 401,
@@ -275,6 +281,104 @@ RSpec.describe Typesafe::Client do
 
         expect { client.evaluate(state: state, questions: questions) }
           .to raise_error(Typesafe::PermissionDeniedError)
+      end
+    end
+
+    context "retries" do
+      # The policy waits before each retry via Kernel.sleep; record requested
+      # delays so the backoff is verifiable without slowing the suite down.
+      let(:sleeps) { [] }
+
+      before do
+        allow(Kernel).to receive(:sleep) { |delay| sleeps << delay }
+      end
+
+      it "succeeds after a 429, replaying the identical request" do
+        stub = stub_request(:post, endpoint)
+          .with(
+            headers: {
+              "Authorization" => "Bearer #{api_key}",
+              "Content-Type" => "application/json"
+            },
+            body: hash_including("state" => state, "model" => "jev-latest")
+          ).to_return(
+            { status: 429, body: "{}" },
+            { status: 200, body: JSON.generate(example_response) }
+          )
+
+        response = client.evaluate(state: state, questions: questions)
+
+        expect(response).to eq(Typesafe::Response.from_h(example_response))
+        expect(stub).to have_been_requested.times(2)
+      end
+
+      [529, 500].each do |status|
+        it "succeeds after a #{status} with exactly two requests" do
+          stub = stub_request(:post, endpoint)
+            .with(body: hash_including("state" => state, "model" => "jev-latest"))
+            .to_return(
+              { status: status, body: "{}" },
+              { status: 200, body: JSON.generate(example_response) }
+            )
+
+          response = client.evaluate(state: state, questions: questions)
+
+          expect(response).to eq(Typesafe::Response.from_h(example_response))
+          expect(stub).to have_been_requested.times(2)
+        end
+      end
+
+      {
+        429 => Typesafe::RateLimitError,
+        529 => Typesafe::OverloadedError,
+        500 => Typesafe::ServerError
+      }.each do |status, error_class|
+        it "raises the original #{error_class} once retryable failures exceed the budget" do
+          stub = stub_request(:post, endpoint).to_return(status: status, body: "{}")
+
+          expect { client.evaluate(state: state, questions: questions) }
+            .to raise_error(error_class)
+
+          expect(stub).to have_been_requested.times(3)
+        end
+      end
+
+      {
+        401 => Typesafe::AuthenticationError,
+        403 => Typesafe::PermissionDeniedError,
+        404 => Typesafe::NotFoundError,
+        422 => Typesafe::UnprocessableEntityError
+      }.each do |status, error_class|
+        it "never retries a #{status}" do
+          stub = stub_request(:post, endpoint).to_return(status: status, body: "{}")
+
+          expect { client.evaluate(state: state, questions: questions) }
+            .to raise_error(error_class)
+
+          expect(stub).to have_been_requested.once
+        end
+      end
+
+      it "sleeps 0.5s then 1s between attempts (exponential backoff with jitter)" do
+        stub_request(:post, endpoint).to_return(
+          { status: 529, body: "{}" },
+          { status: 529, body: "{}" },
+          { status: 200, body: JSON.generate(example_response) }
+        )
+
+        client.evaluate(state: state, questions: questions)
+
+        expect(sleeps.length).to eq(2)
+        expect(sleeps[0]).to be_between(0.25, 0.5)
+        expect(sleeps[1]).to be_between(0.5, 1.0)
+      end
+
+      it "does not sleep when the first attempt succeeds" do
+        stub_request(:post, endpoint).to_return(status: 200, body: JSON.generate(example_response))
+
+        client.evaluate(state: state, questions: questions)
+
+        expect(sleeps).to be_empty
       end
     end
   end

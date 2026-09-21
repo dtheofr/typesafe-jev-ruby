@@ -21,6 +21,15 @@ module Typesafe
     DEFAULT_MODEL = "jev-latest"
     API_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 
+    # Default retry policy for retryable errors (429, 529, 5xx): at most
+    # +RETRIES+ retries (so a total of +RETRIES + 1+ attempts), with an
+    # exponential backoff between attempts starting at +BASE_DELAY+ seconds,
+    # doubled on each retry and capped at +MAX_DELAY+, with jitter.
+    RETRIES = 2
+    BASE_DELAY = 0.5
+    MAX_DELAY = 8.0
+    private_constant :RETRIES, :BASE_DELAY, :MAX_DELAY
+
     # @return [String] the API key sent as +Authorization: Bearer <key>+.
     attr_reader :api_key
 
@@ -60,6 +69,11 @@ module Typesafe
     #   {Typesafe::PermissionDeniedError}, {Typesafe::NotFoundError},
     #   {Typesafe::UnprocessableEntityError}, {Typesafe::RateLimitError},
     #   {Typesafe::OverloadedError} and {Typesafe::ServerError}.
+    #
+    # Retryable errors (429, 529 and 5xx) are retried automatically up to
+    # +RETRIES+ times with an exponential backoff; when the budget is
+    # exhausted, the last retryable error is raised. Non-retryable errors
+    # (400, 401, 403, 404, 422) raise immediately without any retry.
     def evaluate(state:, questions:, model: nil)
       model = model.nil? ? self.model : freeze_string(model, "model must be a non-empty String")
       questions = validate_questions!(questions)
@@ -70,15 +84,38 @@ module Typesafe
         questions: questions.transform_values(&:to_h)
       )
 
-      response = post(body)
-      unless response.is_a?(Net::HTTPSuccess)
-        raise Errors.from_response(status: response.code.to_i, headers: response, body: response.body)
-      end
-
+      response = request_with_retries(body)
       Response.from_json(response.body)
     end
 
     private
+
+    # POSTs +body+ and retries retryable error responses up to +RETRIES+
+    # times. The same +body+ is replayed verbatim on every attempt: an
+    # evaluation is stateless, so the replay is safe. Raises the error as
+    # soon as it is not retryable, or once the retry budget is exhausted.
+    def request_with_retries(body)
+      retries = 0
+      loop do
+        response = post(body)
+        return response if response.is_a?(Net::HTTPSuccess)
+
+        error = Errors.from_response(status: response.code.to_i, headers: response, body: response.body)
+        raise error unless error.retryable?
+        raise error if retries >= RETRIES
+
+        retries += 1
+        Kernel.sleep(delay_before_retry(retries))
+      end
+    end
+
+    # Delay before retry +retry_number+: the base delay doubled on each retry,
+    # capped at +MAX_DELAY+ seconds, with equal jitter so parallel clients do
+    # not align (uniform between half the nominal delay and the nominal delay).
+    def delay_before_retry(retry_number)
+      nominal = [BASE_DELAY * (2**(retry_number - 1)), MAX_DELAY].min
+      nominal * (0.5 + Kernel.rand * 0.5)
+    end
 
     def post(body)
       uri = URI(API_ENDPOINT)

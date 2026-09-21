@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Automatic retries** on retryable errors (429, 529 and 5xx): by default
+  `Typesafe::Client#evaluate` (and `Typesafe::Jev.evaluate`) now retries up to
+  2 times (3 attempts in total) with an exponential backoff — 0.5 s base,
+  doubled on each retry, capped at 8 s, with jitter — before raising the last
+  retryable error. The POST is replayed verbatim; non-retryable errors
+  (400, 401, 403, 404, 422) still raise immediately without any replay. The
+  retries are silent: no log output, no configuration needed.
+
 ## [1.0.0] - 2026-09-20
 
 ### Added
