@@ -6,7 +6,7 @@ Build a Ruby gem (`typesafe-jev`) to use **Jev**, TypeSafe's flagship System One
 
 ## Current state
 
-Question classes exist ({Noul, Choice, Score} value objects under `Typesafe::`, see Structure). **No HTTP client yet**, so do not assume one exists.
+Question classes ({Noul, Choice, Score} value objects under `Typesafe::`) and an HTTP client (`Typesafe::Client`, `Typesafe::Jev`, `Response`/`Answer` objects, error hierarchy in `lib/typesafe/errors.rb`) exist.
 
 ## Structure
 
@@ -46,9 +46,9 @@ bundle exec rspec       # run tests directly
 
 ## API contract (for when the client is built)
 
-Single endpoint: `POST https://api.typesafe.ai/v1/systemone` with `Authorization: Bearer <API_KEY>`. Request: `{ state, model: "jev-latest", questions: { <id>: Question } }`. Three question types: **Noul** (yes/no probability), **Choice** (option + probability distribution + confidence), **Score** (probability-weighted level + legend + confidence). Errors: 401 (auth), 422 (validation), 429 (rate limit) and 529 (overloaded); retry 429/529 with exponential backoff. Docs index: `https://docs.typesafe.ai/llms.txt` (append `.md` to page URLs to fetch Markdown).
+Single endpoint: `POST https://api.typesafe.ai/v1/systemone` with `Authorization: Bearer <API_KEY>`. Request: `{ state, model: "jev-latest", questions: { <id>: Question } }`. Three question types: **Noul** (yes/no probability), **Choice** (option + probability distribution + confidence), **Score** (probability-weighted level + legend + confidence). Errors: 401 (auth), 422 (validation), 429 (rate limit), 529 (overloaded) and 5xx. Retry is automatic by default (2 retries, 429/529/5xx + connection errors, `Retry-After` honored else exponential backoff 0.5s→8s + jitter), configured via a single `retry_options:` Hash on `Client.new` — see docs/adr/0001-retentatives-automatiques-par-defaut.md. Docs index: `https://docs.typesafe.ai/llms.txt` (append `.md` to page URLs to fetch Markdown).
 
 ## Conventions
 
-- **Always bump the version** in `lib/typesafe/version.rb` (and add a `CHANGELOG.md` entry) whenever committing changes to the gem; include the new version in the commit message.
+- **Bump the version once per epic**, in the final PR of its stack: `lib/typesafe/version.rb` (with `CHANGELOG.md` entry and lockfile/spec sync); the intermediate PRs of the stack do not touch the version.
 - Ruby 3.4 locally (via mise). Freeze string literals in all files.
