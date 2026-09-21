@@ -16,6 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (400, 401, 403, 404, 422) still raise immediately without any replay. The
   retries are silent: no log output, no configuration needed.
 
+- **`Retry-After` honored** on rate limits: when a 429 carries a `Retry-After`
+  (seconds) or `Retry-After-Ms` (milliseconds) header, `Typesafe::Client#evaluate`
+  (and `Typesafe::Jev.evaluate`) now waits exactly the delay the server imposes
+  before retrying, instead of the default exponential backoff. A 429 without
+  either header — or with a non-numeric `Retry-After` — keeps the default
+  exponential backoff.
+
 ## [1.0.0] - 2026-09-20
 
 ### Added

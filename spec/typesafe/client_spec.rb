@@ -380,6 +380,66 @@ RSpec.describe Typesafe::Client do
 
         expect(sleeps).to be_empty
       end
+
+      it "honors Retry-After on a 429, waiting exactly the server's delay in seconds" do
+        stub_request(:post, endpoint).to_return(
+          { status: 429, body: "{}", headers: { "Retry-After" => "2" } },
+          { status: 200, body: JSON.generate(example_response) }
+        )
+
+        client.evaluate(state: state, questions: questions)
+
+        expect(sleeps).to eq([2.0])
+      end
+
+      it "honors Retry-After-Ms on a 429, waiting exactly the server's delay in seconds" do
+        stub_request(:post, endpoint).to_return(
+          { status: 429, body: "{}", headers: { "Retry-After-Ms" => "250" } },
+          { status: 200, body: JSON.generate(example_response) }
+        )
+
+        client.evaluate(state: state, questions: questions)
+
+        expect(sleeps).to eq([0.25])
+      end
+
+      it "ignores a non-numeric Retry-After and falls back to the default backoff" do
+        stub_request(:post, endpoint).to_return(
+          { status: 429, body: "{}", headers: { "Retry-After" => "soon" } },
+          { status: 200, body: JSON.generate(example_response) }
+        )
+
+        client.evaluate(state: state, questions: questions)
+
+        expect(sleeps.length).to eq(1)
+        expect(sleeps[0]).to be_between(0.25, 0.5)
+      end
+
+      [-1, 0].each do |value|
+        it "ignores a non-positive numeric Retry-After (#{value}) and falls back to the default backoff" do
+          stub_request(:post, endpoint).to_return(
+            { status: 429, body: "{}", headers: { "Retry-After" => value.to_s } },
+            { status: 200, body: JSON.generate(example_response) }
+          )
+
+          client.evaluate(state: state, questions: questions)
+
+          expect(sleeps.length).to eq(1)
+          expect(sleeps[0]).to be_between(0.25, 0.5)
+        end
+      end
+
+      it "keeps the exponential backoff on a 429 without a Retry-After header" do
+        stub_request(:post, endpoint).to_return(
+          { status: 429, body: "{}" },
+          { status: 200, body: JSON.generate(example_response) }
+        )
+
+        client.evaluate(state: state, questions: questions)
+
+        expect(sleeps.length).to eq(1)
+        expect(sleeps[0]).to be_between(0.25, 0.5)
+      end
     end
   end
 
