@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-09-21
+
+### Fixed
+
+- Rails/Bundler integration: added a `typesafe-jev.rb` require shim. Bundler requires gems by name (`require "typesafe-jev"`); without the shim its LoadError fallback translated the dash to a slash and silently loaded `typesafe/jev` (the Jev facade alone) instead of the entry point, leaving `Noul`, `Choice`, `Score`, the error classes, `Response`, `Answer` and `Usage` unloaded in Rails apps. With `gem "typesafe-jev"` in the Gemfile, the full gem now loads at boot.
+
 ## [1.0.0] - 2026-09-20
 
 ### Added
@@ -65,6 +71,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Initial gem scaffold.
 
 [unreleased]: https://github.com/dtheofr/typesafe-jev-ruby/compare/v1.0.0...HEAD
+[1.0.1]: https://github.com/dtheofr/typesafe-jev-ruby/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/dtheofr/typesafe-jev-ruby/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/dtheofr/typesafe-jev-ruby/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dtheofr/typesafe-jev-ruby/compare/v0.5.0...v0.6.0
