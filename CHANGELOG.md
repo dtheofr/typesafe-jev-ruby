@@ -23,6 +23,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   either header — or with a non-numeric `Retry-After` — keeps the default
   exponential backoff.
 
+- **Network errors become retryable and wrapped**: a failure at the network
+  level — connection refused, DNS failure, connection/read/write timeout,
+  reset connection, truncated stream or TLS handshake failure — no longer
+  escapes `Typesafe::Client#evaluate` (or `Typesafe::Jev.evaluate`) raw. It is
+  wrapped in a new retryable `Typesafe::ConnectionError < APIError` with the
+  original exception preserved as `#cause`, and follows the exact same retry
+  policy as the 429/529/5xx errors: replayed with the default
+  exponential backoff, then raised once the budget is exhausted. A brief
+  outage is therefore absorbed by the automatic retries.
+
 ## [1.0.0] - 2026-09-20
 
 ### Added

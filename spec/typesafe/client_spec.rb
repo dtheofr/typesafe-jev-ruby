@@ -441,6 +441,93 @@ RSpec.describe Typesafe::Client do
         expect(sleeps[0]).to be_between(0.25, 0.5)
       end
     end
+
+    context "network errors" do
+      # Network-level failures are wrapped in Typesafe::ConnectionError and
+      # follow the retry policy of the retryable HTTP errors, so the kernel
+      # sleep is stubbed and delays recorded like in the "retries" context.
+      let(:sleeps) { [] }
+
+      before do
+        allow(Kernel).to receive(:sleep) { |delay| sleeps << delay }
+      end
+
+      # Representative network-failure families. Resolv::ResolvError exists
+      # only on Ruby >= 3.3: on 3.1/3.2 a DNS failure raises SocketError, so
+      # the spec keeps the list version-portable.
+      network_errors = [
+        Errno::ECONNREFUSED, # connexion refusée
+        Errno::ECONNRESET, # connexion réinitialisée
+        Net::ReadTimeout, # timeout de lecture
+        EOFError # flux coupé
+      ]
+      network_errors << Resolv::ResolvError if defined?(Resolv::ResolvError)
+
+      network_errors.each do |network_error|
+        it "retries a #{network_error} and succeeds on the next attempt" do
+          stub = stub_request(:post, endpoint)
+            .to_raise(network_error).then
+            .to_return(status: 200, body: JSON.generate(example_response))
+
+          response = client.evaluate(state: state, questions: questions)
+
+          expect(response).to eq(Typesafe::Response.from_h(example_response))
+          expect(stub).to have_been_requested.times(2)
+          expect(sleeps.length).to eq(1)
+        end
+      end
+
+      it "retries a read timeout (to_timeout) and succeeds on the next attempt" do
+        stub = stub_request(:post, endpoint)
+          .to_timeout.then
+          .to_return(status: 200, body: JSON.generate(example_response))
+
+        response = client.evaluate(state: state, questions: questions)
+
+        expect(response).to eq(Typesafe::Response.from_h(example_response))
+        expect(stub).to have_been_requested.times(2)
+      end
+
+      it "raises a retryable Typesafe::ConnectionError with the original exception as cause once the budget is exhausted" do
+        stub = stub_request(:post, endpoint).to_raise(Errno::ECONNREFUSED)
+
+        expect { client.evaluate(state: state, questions: questions) }
+          .to raise_error(Typesafe::ConnectionError) { |error|
+            expect(error).to be_retryable
+            expect(error.status).to be_nil
+            expect(error.cause).to be_a(Errno::ECONNREFUSED)
+          }
+
+        expect(stub).to have_been_requested.times(3)
+        expect(sleeps.length).to eq(2)
+      end
+
+      raw_network_errors = [
+        Errno::ECONNREFUSED, Errno::ECONNRESET, Net::ReadTimeout, Timeout::Error,
+        SocketError, EOFError
+      ]
+      raw_network_errors << Resolv::ResolvError if defined?(Resolv::ResolvError)
+
+      raw_network_errors.each do |network_error|
+        it "never lets a raw #{network_error} escape from #evaluate" do
+          stub_request(:post, endpoint).to_raise(network_error)
+
+          expect { client.evaluate(state: state, questions: questions) }
+            .to raise_error(Typesafe::ConnectionError)
+        end
+      end
+
+      it "applies to network errors exactly the delay policy of retryable HTTP errors" do
+        stub_request(:post, endpoint).to_raise(Errno::ECONNREFUSED)
+
+        expect { client.evaluate(state: state, questions: questions) }
+          .to raise_error(Typesafe::ConnectionError)
+
+        expect(sleeps.length).to eq(2)
+        expect(sleeps[0]).to be_between(0.25, 0.5)
+        expect(sleeps[1]).to be_between(0.5, 1.0)
+      end
+    end
   end
 
   private

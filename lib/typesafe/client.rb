@@ -2,6 +2,7 @@
 
 require "json"
 require "net/http"
+require "openssl"
 
 require_relative "question"
 
@@ -21,7 +22,8 @@ module Typesafe
     DEFAULT_MODEL = "jev-latest"
     API_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 
-    # Default retry policy for retryable errors (429, 529, 5xx): at most
+    # Default retry policy for retryable failures — the 429/529/5xx status
+    # errors and the +ConnectionError+ wrapping network errors: at most
     # +RETRIES+ retries (so a total of +RETRIES + 1+ attempts), with an
     # exponential backoff between attempts starting at +BASE_DELAY+ seconds,
     # doubled on each retry and capped at +MAX_DELAY+, with jitter.
@@ -29,6 +31,33 @@ module Typesafe
     BASE_DELAY = 0.5
     MAX_DELAY = 8.0
     private_constant :RETRIES, :BASE_DELAY, :MAX_DELAY
+
+    # Network-level exception families wrapped into a +ConnectionError+ before
+    # any HTTP response: socket and DNS failures, connection/read/write
+    # timeouts, refused or reset connections, truncated streams and TLS
+    # handshake failures. Exhaustive per-version lists are an implementation
+    # choice (settled in the ticket): classes that only exist on some Ruby
+    # versions (Resolv::ResolvError on >= 3.3 for DNS, and the write-timeout
+    # classes where they do not inherit from Timeout::Error) are added when
+    # defined.
+    NETWORK_ERRORS = [
+      SocketError,             # generic socket failures ; DNS on Ruby <= 3.2
+      Errno::ECONNREFUSED,     # connection refused
+      Errno::ECONNRESET,       # connection reset
+      Errno::EHOSTUNREACH,     # host unreachable
+      Errno::ENETUNREACH,      # network unreachable
+      Errno::EPIPE,            # write on a truncated stream
+      Errno::ETIMEDOUT,        # system timeout exceeded
+      EOFError,                # stream truncated while reading
+      Timeout::Error,          # Net::OpenTimeout / ReadTimeout / WriteTimeout
+      Net::HTTPBadResponse,    # unreadable HTTP framing
+      OpenSSL::SSL::SSLError   # TLS handshake failure
+    ]
+    NETWORK_ERRORS << Net::WriteTimeout if defined?(Net::WriteTimeout)
+    NETWORK_ERRORS << IO::TimeoutError if defined?(IO::TimeoutError)
+    NETWORK_ERRORS << Resolv::ResolvError if defined?(Resolv::ResolvError)
+    NETWORK_ERRORS.freeze
+    private_constant :NETWORK_ERRORS
 
     # @return [String] the API key sent as +Authorization: Bearer <key>+.
     attr_reader :api_key
@@ -64,18 +93,24 @@ module Typesafe
     #   String/Symbol keys to Question values, +model+ is invalid, or the
     #   response body is not a valid response shape.
     # @raise [JSON::ParserError] if the response body is not valid JSON.
+    # @raise [Typesafe::ConnectionError] if the request fails at the network
+    #   level before any HTTP response (connection refused, DNS failure,
+    #   connection/read/write timeout, reset connection or truncated stream);
+    #   the original exception is available via +cause+. Retried like the
+    #   retryable status errors below, and raised once the budget is
+    #   exhausted.
     # @raise [Typesafe::APIError] (or a subclass) on any non-2xx HTTP response:
     #   {Typesafe::BadRequestError}, {Typesafe::AuthenticationError},
     #   {Typesafe::PermissionDeniedError}, {Typesafe::NotFoundError},
     #   {Typesafe::UnprocessableEntityError}, {Typesafe::RateLimitError},
     #   {Typesafe::OverloadedError} and {Typesafe::ServerError}.
     #
-    # Retryable errors (429, 529 and 5xx) are retried automatically up to
-    # +RETRIES+ times; the wait honors the server's +Retry-After+ /
-    # +Retry-After-Ms+ header on a 429, otherwise an exponential backoff
-    # applies. When the budget is exhausted, the last retryable error is
-    # raised. Non-retryable errors (400, 401, 403, 404, 422) raise
-    # immediately without any retry.
+    # Retryable errors — 429, 529, 5xx and network failures — are retried
+    # automatically up to +RETRIES+ times; the wait honors the server's
+    # +Retry-After+ / +Retry-After-Ms+ header on a 429, otherwise an
+    # exponential backoff applies. When the budget is exhausted, the last
+    # retryable error is raised. Non-retryable errors (400, 401, 403, 404,
+    # 422) raise immediately without any retry.
     def evaluate(state:, questions:, model: nil)
       model = model.nil? ? self.model : freeze_string(model, "model must be a non-empty String")
       questions = validate_questions!(questions)
@@ -92,28 +127,45 @@ module Typesafe
 
     private
 
-    # POSTs +body+ and retries retryable error responses up to +RETRIES+
-    # times. The same +body+ is replayed verbatim on every attempt: an
-    # evaluation is stateless, so the replay is safe. Raises the error as
-    # soon as it is not retryable, or once the retry budget is exhausted.
+    # POSTs +body+ and retries retryable failures up to +RETRIES+ times.
+    # The same +body+ is replayed verbatim on every attempt: an evaluation is
+    # stateless, so the replay is safe. Each attempt either returns the HTTP
+    # response, or an +APIError+ — the status error built from a non-2xx
+    # response, or the +ConnectionError+ wrapping a network-level failure. A
+    # failure that is not retryable raises immediately; once the budget is
+    # exhausted, the last retryable error is raised. Network errors follow
+    # exactly the same policy as the retryable statuses (429, 529, 5xx).
     def request_with_retries(body)
       retries = 0
       loop do
-        response = post(body)
-        return response if response.is_a?(Net::HTTPSuccess)
+        outcome = attempt(body)
+        return outcome if outcome.is_a?(Net::HTTPSuccess)
 
-        error = Errors.from_response(status: response.code.to_i, headers: response, body: response.body)
-        raise error unless error.retryable?
-        raise error if retries >= RETRIES
+        raise outcome unless outcome.retryable?
+        raise outcome if retries >= RETRIES
 
         retries += 1
-        Kernel.sleep(delay_before_retry(error, retries))
+        Kernel.sleep(delay_before_retry(outcome, retries))
       end
+    end
+
+    # One HTTP attempt: posts +body+ and returns the response on success, or
+    # the matching +APIError+ otherwise — the status error built from the
+    # non-2xx response, or the +ConnectionError+ a network-level failure
+    # raised inside +post+. Never raises; the retry loop decides.
+    def attempt(body)
+      response = post(body)
+      return response if response.is_a?(Net::HTTPSuccess)
+
+      Errors.from_response(status: response.code.to_i, headers: response, body: response.body)
+    rescue ConnectionError => error
+      error
     end
 
     # Delay before retry +retry_number+. When the server imposes the pace on a
     # rate limit (429), its +Retry-After+ / +Retry-After-Ms+ header is honored
-    # exactly; otherwise the delay is the exponential backoff: the base delay
+    # exactly; otherwise — including for +ConnectionError+, which carries no
+    # HTTP headers — the delay is the exponential backoff: the base delay
     # doubled on each retry, capped at +MAX_DELAY+ seconds, with equal jitter
     # so parallel clients do not align (uniform between half the nominal delay
     # and the nominal delay). A non-numeric or non-positive +Retry-After+ is
@@ -138,6 +190,13 @@ module Typesafe
         use_ssl: true,
         open_timeout: 5, write_timeout: 10, read_timeout: 30
       ) { |http| http.request(request) }
+    rescue *NETWORK_ERRORS => error
+      # No HTTP response was involved: the failure is a network error, so it
+      # is wrapped — instead of escaping raw — and marked retryable. Raising
+      # from within this rescue keeps the original exception as +cause+.
+      raise ConnectionError.new(
+        message: "The TypeSafe API could not be reached: #{error.message}"
+      ), cause: error
     end
 
     def validate_questions!(questions)
